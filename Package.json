@@ -1,0 +1,10 @@
+{
+    "description": "Library for creating threads",
+    "contributor": {
+        "organization": "Peko"
+    },
+    "versions": [
+        "v0.0.1"
+    ],
+    "dependencies": []
+}

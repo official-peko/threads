@@ -1,0 +1,82 @@
+//! This file implements threading for Peko.
+//  ________  _______   ___  __    ________
+// |\   __  \|\  ___ \ |\  \|\  \ |\   __  \
+// \ \  \|\  \ \   __/|\ \  \/  /|\ \  \|\  \
+//  \ \   ____\ \  \_|/_\ \   ___  \ \  \\\  \
+//   \ \  \___|\ \  \_|\ \ \  \\ \  \ \  \\\  \
+//    \ \__\    \ \_______\ \__\\ \__\ \_______\
+//     \|__|     \|_______|\|__| \|__|\|_______|
+//
+// Copyright 2025 Preston Brown. All Rights Reserved.
+
+platform android {
+    link objects::android::threads as object;
+}
+
+platform ios {
+    arch x86_64 {
+        link objects::ios::x86_64::threads as object;
+    }
+
+    arch arm {
+        link objects::ios::arm::threads as object;
+    }
+}
+
+platform windows {
+    link objects::windows::threads as object;
+}
+
+platform linux {
+    arch x86_64 {
+        link objects::linux::x86_64::threads as object;
+    }
+
+    arch arm {
+        link objects::linux::arm::threads as object;
+    }
+}
+
+platform macos {
+    arch x86_64 {
+        link objects::macos::x86_64::threads as object;
+    }
+
+    arch arm {
+        link objects::macos::arm::threads as object;
+    }
+}
+
+[external] fn create_thread(worker: (opaque)(opaque), data: opaque);
+
+/// Represents a simple system thread.
+class Thread {
+    [private] threaded_function: closure() => opaque;
+
+    /// Creates a new thread of the provided function.
+    constructor(thread_func: closure()) {
+        this.threaded_function = closure[thread_func]() => opaque {
+            thread_func();
+            return Default;
+        };
+    }
+
+    /// Sets the thread function.
+    [mutator] fn set_threaded_function(thread_func: closure()) {
+        this.threaded_function = closure[thread_func]() => opaque {
+            thread_func();
+            return Default;
+        };
+    }
+
+    /// Starts the thread.
+    fn start() {
+        extern::create_thread(this.threaded_function.function, this.threaded_function.context);
+    }
+}
+
+/// Creates and starts a new thread with the provided function.
+fn new_thread(threaded_function: closure()) {
+    thread := Thread(threaded_function);
+    thread.start();
+}
