@@ -7,7 +7,7 @@
 //    \ \__\    \ \_______\ \__\\ \__\ \_______\
 //     \|__|     \|_______|\|__| \|__|\|_______|
 //
-// Copyright 2025 Preston Brown. All Rights Reserved.
+// Copyright 2026 Preston Brown. All Rights Reserved.
 
 platform android {
     link objects::android::threads as object;
@@ -47,18 +47,66 @@ platform macos {
     }
 }
 
-[external] fn create_thread(worker: (opaque)(opaque), data: opaque);
+[external] fn atomic_mutex_flag_init(flag: &bool);
+[external] fn atomic_mutex_flag_lock(flag: &bool);
+[external] fn atomic_mutex_flag_unlock(flag: &bool);
+
+/// Holds data in a thread-safe manner, allows thread-safe mutation of data
+class Mutex<T> {
+    [private] data: T;
+    [private] flag: bool;
+
+    /// Creates new Mutex that holds the provided data
+    constructor(data: T) {
+        this.data = data;
+        extern::atomic_mutex_flag_init(&this.flag);
+    }
+
+    /// Locks the mutex for access, returns a reference to the data for mutation or reading
+    fn lock() => &T {
+        extern::atomic_mutex_flag_lock(&this.flag);
+        return &this.data;
+    }
+
+    /// Releases the mutex, allows for other points of access now
+    fn release() {
+        extern::atomic_mutex_flag_unlock(&this.flag);
+    }
+}
+
+[external] fn create_thread(worker: (opaque)(opaque), data: opaque, synchronous: bool) => opaque;
+[external] fn terminate_thread(thread: opaque);
+
+// simple index-based id for identifying created threads
+[private] current_thread_id: int = 0;
 
 /// Represents a simple system thread.
 class Thread {
     [private] threaded_function: closure() => opaque;
+    [private] cthread: opaque;
+    [private] active: bool;
+    [private] id: int;
 
     /// Creates a new thread of the provided function.
     constructor(thread_func: closure()) {
+        this.active = false;
+        this.cthread = Default;
+
+        this.id = current_thread_id;
+        current_thread_id += 1;
+
         this.threaded_function = closure[thread_func]() => opaque {
             thread_func();
             return Default;
         };
+
+        // in case program exits while thread running, make sure to clean up thread
+        // includes removing thread stack reference from gc
+        add_exit_function(closure[this]() {
+            if this.active {
+                this.kill();
+            }
+        })
     }
 
     /// Sets the thread function.
@@ -71,7 +119,20 @@ class Thread {
 
     /// Starts the thread.
     fn start() {
-        extern::create_thread(this.threaded_function.function, this.threaded_function.context);
+        this.cthread = extern::create_thread(this.threaded_function.function, this.threaded_function.context, false);
+        this.active = true;
+    }
+
+    /// Starts the thread in blocking mode.
+    fn start_blocking() {
+        this.active = true;
+        this.cthread = extern::create_thread(this.threaded_function.function, this.threaded_function.context, true);
+    }
+
+    /// Kills the thread early.
+    fn kill() {
+        extern::terminate_thread(this.cthread);
+        this.active = false;
     }
 }
 
